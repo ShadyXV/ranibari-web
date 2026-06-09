@@ -46,6 +46,7 @@ const ACTIVE_SOUND_GOLD = '#e7c66a'
 const DEMO_AUDIO_RADIUS_METERS = 40
 const ACTIVE_AUDIO_VISIBLE_LEVEL = 0.08
 const ACTIVE_AUDIO_HIDE_DELAY_MS = 1000
+const HOVER_AUDIO_VOLUME_SCALE = 0.8
 const SELECTED_SLOT = 'day'
 
 function isInsidePolygon(lat, lng, polygon) {
@@ -294,19 +295,22 @@ export default function ArchivePage() {
   const handleMeshPointerMove = useCallback((lat, lng) => {
     if (!isInsidePolygon(lat, lng, parkCropPolygon)) {
       setInfluenceLatLng(null)
-      if (!selectedId) fadeOutSpatialAudio()
+      if (selectedId) soloSpatialAudio(selectedId)
+      else fadeOutSpatialAudio()
       return
     }
 
     setInfluenceLatLng([lat, lng])
-    if (selectedId) return
-    moveSpatialAudioTo(lat, lng)
-  }, [fadeOutSpatialAudio, moveSpatialAudioTo, parkCropPolygon, selectedId])
+    moveSpatialAudioTo(lat, lng, {
+      volumeScale: selectedId ? HOVER_AUDIO_VOLUME_SCALE : 1,
+    })
+  }, [fadeOutSpatialAudio, moveSpatialAudioTo, parkCropPolygon, selectedId, soloSpatialAudio])
 
   const handleMeshPointerLeave = useCallback(() => {
     setInfluenceLatLng(null)
-    if (!selectedId) fadeOutSpatialAudio()
-  }, [fadeOutSpatialAudio, selectedId])
+    if (selectedId) soloSpatialAudio(selectedId)
+    else fadeOutSpatialAudio()
+  }, [fadeOutSpatialAudio, selectedId, soloSpatialAudio])
 
   const activeAudioRows = useMemo(() => (
     pointAudioSources

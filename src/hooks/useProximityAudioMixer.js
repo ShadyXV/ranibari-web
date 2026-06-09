@@ -88,6 +88,7 @@ export function useProximityAudioMixer(sources, {
     entriesRef.current.forEach((entry) => { entry.targetVolume = 0; });
 
     if (!position) return;
+    const volumeScale = Math.max(0, Math.min(1, position.volumeScale ?? 1));
 
     const nearest = sourceRef.current
       .map((source) => ({ source, distance: distanceMeters(position, source) }))
@@ -100,7 +101,7 @@ export function useProximityAudioMixer(sources, {
 
       const proximity = 1 - (distance / radiusMeters);
       const rankTrim = 1 - (index * 0.08);
-      entry.targetVolume = Math.min(maxVolume, maxVolume * Math.pow(proximity, 1.35) * rankTrim);
+      entry.targetVolume = Math.min(maxVolume, maxVolume * volumeScale * Math.pow(proximity, 1.35) * rankTrim);
       playEntry(entry);
     });
   }, [maxActive, maxVolume, playEntry, radiusMeters]);
@@ -146,15 +147,16 @@ export function useProximityAudioMixer(sources, {
     applyPosition(positionRef.current);
   }, [applyPosition]);
 
-  const moveTo = useCallback((lat, lng) => {
+  const moveTo = useCallback((lat, lng, options = {}) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    applyPosition({ lat, lng });
+    applyPosition({ lat, lng, volumeScale: options.volumeScale ?? 1 });
   }, [applyPosition]);
 
-  const solo = useCallback((id) => {
+  const solo = useCallback((id, options = {}) => {
+    const volumeScale = Math.max(0, Math.min(1, options.volumeScale ?? 1));
     positionRef.current = null;
     entriesRef.current.forEach((entry, entryId) => {
-      entry.targetVolume = entryId === id ? maxVolume : 0;
+      entry.targetVolume = entryId === id ? maxVolume * volumeScale : 0;
       if (entryId === id) playEntry(entry);
     });
   }, [maxVolume, playEntry]);

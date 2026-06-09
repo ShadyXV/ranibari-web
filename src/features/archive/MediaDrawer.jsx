@@ -29,7 +29,7 @@ export default function MediaDrawer({ open, point, pointIndex, selectedSlot, onC
             </header>
 
             <div className="drawer-body custom-scrollbar">
-              <section className="drawer-section">
+              <section className="drawer-section media-section">
                 <div className="video-frame">
                   {videoUrl ? (
                     <>
