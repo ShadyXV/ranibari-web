@@ -1,6 +1,20 @@
-# Ranibari Static Web
+# Ranibari Web
 
-Standalone GitHub Pages frontend for the Ranibari Community Forest video archive. The app reads point/timeslot data from a static JSON manifest and plays 720p video/audio from UploadThing.
+An interactive art demo for exploring Ranibari Community Forest through sound, terrain, and video.
+
+The project begins with a simple invitation: listen first. Visitors move through a 3D terrain and discover small sound points from the forest before opening the videos attached to those places. It is a proof of concept for a slower, more immersive archive experience where the landscape is not just a backdrop, but the way into the material.
+
+This first version is intentionally small. It focuses on one day of collected field recordings and videos, using a compact static dataset that can be hosted on GitHub Pages. The long-term direction is to expand the same format across different times of day, seasons, weather conditions, and richer media: higher fidelity imagery, layered audio, 360 video panoramas, and other spatial materials that let people feel their way through the forest before diving deeper into each recording.
+
+Technically, this is a standalone Vite + React frontend. It reads point and timeslot data from a static JSON manifest and plays 720p video/audio from UploadThing.
+
+## Current Demo
+
+- 3D terrain-first interface for exploring the forest spatially.
+- Sound-led interaction, with video available after selecting a point.
+- Static manifest data designed for lightweight hosting.
+- Manual GitHub Pages deployment for controlled demo publishing.
+- A foundation for future seasonal, time-based, and immersive media layers.
 
 ## Setup
 
