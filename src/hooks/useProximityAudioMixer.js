@@ -83,6 +83,25 @@ export function useProximityAudioMixer(sources, {
     }
   }, []);
 
+  const warmEntry = useCallback(async (entry) => {
+    if (!entry || entry.pendingPlay) return false;
+
+    entry.pendingPlay = true;
+    entry.audio.volume = 0;
+
+    try {
+      await entry.audio.play();
+      entry.audio.pause();
+      return true;
+    } catch {
+      blockedRef.current = true;
+      return false;
+    } finally {
+      entry.audio.volume = Math.max(0, Math.min(maxVolume, entry.currentVolume));
+      entry.pendingPlay = false;
+    }
+  }, [maxVolume]);
+
   const applyPosition = useCallback((position) => {
     positionRef.current = position;
     entriesRef.current.forEach((entry) => { entry.targetVolume = 0; });
@@ -142,10 +161,18 @@ export function useProximityAudioMixer(sources, {
     entriesRef.current.clear();
   }, []);
 
-  const unlock = useCallback(() => {
+  const unlock = useCallback(async (options = {}) => {
     blockedRef.current = false;
+
+    if (options.warm) {
+      const entries = Array.from(entriesRef.current.values());
+      const results = await Promise.all(entries.map((entry) => warmEntry(entry)));
+      if (entries.length > 0) blockedRef.current = !results.some(Boolean);
+    }
+
     applyPosition(positionRef.current);
-  }, [applyPosition]);
+    return !blockedRef.current;
+  }, [applyPosition, warmEntry]);
 
   const moveTo = useCallback((lat, lng, options = {}) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;

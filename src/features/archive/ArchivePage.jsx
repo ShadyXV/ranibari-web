@@ -5,6 +5,7 @@ import {
   Loader2,
   RotateCw,
   Route,
+  Volume2,
   Waves,
   X,
 } from 'lucide-react'
@@ -87,7 +88,7 @@ function TerrainBootScreen({ status, error }) {
   return (
     <div className="boot-screen">
       <div className="boot-panel">
-        <div className="boot-kicker"><Waves size={15} /> Ranibari Live</div>
+        <div className="boot-kicker"><Waves size={15} /> Ranibari Sonic Terrain</div>
         <h1>{error ? 'Terrain unavailable' : 'Preparing Terrain'}</h1>
         <p>
           {error || status.message}
@@ -103,6 +104,30 @@ function TerrainBootScreen({ status, error }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function ExperienceStartOverlay({ audioReady, loading, error, onStart }) {
+  return (
+    <div className="experience-start" role="dialog" aria-modal="true" aria-labelledby="experience-start-title">
+      <div className="experience-start-panel">
+        <div className="boot-kicker"><Waves size={15} /> Ranibari Sonic Terrain</div>
+        <h1 id="experience-start-title">Listen first</h1>
+        <p>
+          Begin with sound enabled, then move across the terrain to hear each place before opening its video.
+        </p>
+        <button
+          type="button"
+          className="experience-start-button"
+          onClick={onStart}
+          disabled={!audioReady || loading}
+        >
+          {loading ? <Loader2 size={17} className="spin" /> : <Volume2 size={17} />}
+          {audioReady ? 'Start listening' : 'Preparing sound'}
+        </button>
+        {error && <p className="experience-start-error">{error}</p>}
       </div>
     </div>
   )
@@ -127,6 +152,10 @@ export default function ArchivePage() {
   const [cameraMode, setCameraMode] = useState('free')
   const [projectInfoOpen, setProjectInfoOpen] = useState(false)
   const [visibleAudioRows, setVisibleAudioRows] = useState([])
+  const [archiveLoaded, setArchiveLoaded] = useState(false)
+  const [experienceStarted, setExperienceStarted] = useState(false)
+  const [audioUnlocking, setAudioUnlocking] = useState(false)
+  const [audioUnlockError, setAudioUnlockError] = useState(null)
   const audioRowsHideTimerRef = useRef(null)
 
   useEffect(() => {
@@ -200,11 +229,14 @@ export default function ArchivePage() {
   }, [])
 
   const loadArchive = useCallback(async () => {
+    setArchiveLoaded(false)
     try {
       setPoints(await getPointMediaArchive())
     } catch (error) {
       console.error(error)
       setPoints([])
+    } finally {
+      setArchiveLoaded(true)
     }
   }, [])
 
@@ -312,6 +344,21 @@ export default function ArchivePage() {
     else fadeOutSpatialAudio()
   }, [fadeOutSpatialAudio, selectedId, soloSpatialAudio])
 
+  const handleStartExperience = useCallback(async () => {
+    setAudioUnlocking(true)
+    setAudioUnlockError(null)
+
+    const unlocked = await unlockSpatialAudio({ warm: true })
+    setAudioUnlocking(false)
+
+    if (unlocked) {
+      setExperienceStarted(true)
+      return
+    }
+
+    setAudioUnlockError('Sound is still blocked. Try clicking Start listening again.')
+  }, [unlockSpatialAudio])
+
   const activeAudioRows = useMemo(() => (
     pointAudioSources
       .map((source) => {
@@ -412,6 +459,7 @@ export default function ArchivePage() {
   )
 
   const panelOpen = Boolean(selectedId && selectedPoint)
+  const audioReadyForStart = archiveLoaded && pointAudioSources.length > 0
 
   if (terrainLoading || terrainError) {
     return (
@@ -479,11 +527,11 @@ export default function ArchivePage() {
                     <X size={16} />
                   </button>
                 </div>
-                <h2 id="project-info-title">Ranibari Live</h2>
+                <h2 id="project-info-title">Ranibari Sonic Terrain</h2>
                 <p>
-                  A static 3D archive of Ranibari field video and derived spatial audio.
-                  The day archive is placed on a contoured terrain model, with nearby audio
-                  mixed as the pointer moves across the park.
+                  A sound-first terrain study built from Ranibari field video and spatial audio.
+                  The day recordings sit on a contoured terrain model, with nearby sound mixed
+                  as the pointer moves across the forest.
                 </p>
                 <dl className="project-info-specs">
                   <div>
@@ -563,6 +611,15 @@ export default function ArchivePage() {
               onMeshPointerDown={unlockSpatialAudio}
             />
           </Suspense>
+
+          {!experienceStarted && (
+            <ExperienceStartOverlay
+              audioReady={audioReadyForStart}
+              loading={audioUnlocking}
+              error={audioUnlockError}
+              onStart={handleStartExperience}
+            />
+          )}
         </main>
       </div>
 
