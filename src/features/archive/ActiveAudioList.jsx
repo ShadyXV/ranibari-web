@@ -3,8 +3,10 @@ import { FileAudio } from 'lucide-react'
 export default function ActiveAudioList({ rows, points, selectedSlot }) {
   if (!rows.length) return null
 
+  const isExiting = rows.every((row) => row.exiting)
+
   return (
-    <section className="control-block">
+    <section className={`control-block active-audio-panel ${isExiting ? 'exiting' : ''}`}>
       <div className="section-title"><FileAudio size={15} /> Active Audio</div>
       <div className="active-audio-list">
         {rows.map((row) => (

@@ -1,22 +1,20 @@
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer as LeafletMap, TileLayer, useMapEvents } from 'react-leaflet'
-import L from 'leaflet'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Compass,
+  Info,
   Loader2,
-  RefreshCw,
   RotateCw,
   Route,
   Waves,
+  X,
 } from 'lucide-react'
 
 import { useMapData } from '../../contexts/MapDataContext.jsx'
-import { useTime } from '../../contexts/TimeContext.jsx'
+import { timeStates } from '../../data/OverlayData.js'
 import { useProximityAudioMixer } from '../../hooks/useProximityAudioMixer.js'
 import { getPointMediaArchive } from '../../lib/archiveRepository.js'
 import { publicAssetUrl } from '../../lib/publicAssetUrl.js'
 import ActiveAudioList from './ActiveAudioList.jsx'
-import ArchiveControls, { ARCHIVE_SLOTS } from './ArchiveControls.jsx'
 import MediaDrawer from './MediaDrawer.jsx'
 
 let terrainModulePromise
@@ -28,15 +26,6 @@ function loadTerrainModule() {
 }
 
 const TerrainTextureMap = lazy(loadTerrainModule)
-
-function preloadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = resolve
-    image.onerror = () => reject(new Error(`Failed to load terrain texture ${src}`))
-    image.src = src
-  })
-}
 
 const DEMO_CONFIG = {
   exaggeration: 2,
@@ -53,26 +42,11 @@ const DEMO_CONFIG = {
   cameraTarget: [0, 0, 0],
 }
 
-const CLUSTER_COLORS = {
-  entrance: '#f59e0b',
-  trail: '#3b82f6',
-  temple: '#ec4899',
-  water: '#06b6d4',
-  canopy: '#10b981',
-  general: '#6b7280',
-}
-
 const ACTIVE_SOUND_GOLD = '#e7c66a'
 const DEMO_AUDIO_RADIUS_METERS = 40
-
-function MapClickHandler({ onMapClick }) {
-  useMapEvents({
-    click(event) {
-      onMapClick(event.latlng.lat, event.latlng.lng)
-    },
-  })
-  return null
-}
+const ACTIVE_AUDIO_VISIBLE_LEVEL = 0.08
+const ACTIVE_AUDIO_HIDE_DELAY_MS = 1000
+const SELECTED_SLOT = 'day'
 
 function isInsidePolygon(lat, lng, polygon) {
   if (!Array.isArray(polygon) || polygon.length < 3) return false
@@ -134,11 +108,8 @@ function TerrainBootScreen({ status, error }) {
 }
 
 export default function ArchivePage() {
-  const { activeTime, activeTimeId } = useTime()
   const { parkCropPolygon } = useMapData()
 
-  const [mapMode, setMapMode] = useState('3d')
-  const [terrainRender, setTerrainRender] = useState('contours')
   const [tiles, setTiles] = useState([])
   const [terrainLoading, setTerrainLoading] = useState(true)
   const [terrainError, setTerrainError] = useState(null)
@@ -148,19 +119,14 @@ export default function ArchivePage() {
     totalTiles: 0,
     moduleReady: false,
   })
-  const [archiveLoading, setArchiveLoading] = useState(true)
-  const [archiveError, setArchiveError] = useState(null)
   const [points, setPoints] = useState([])
   const [selectedId, setSelectedId] = useState(null)
-  const [selectedSlot, setSelectedSlot] = useState(() => (
-    ARCHIVE_SLOTS.includes(activeTimeId) ? activeTimeId : 'day'
-  ))
-  const [showAllPoints, setShowAllPoints] = useState(false)
   const [focusLatLng, setFocusLatLng] = useState(null)
   const [influenceLatLng, setInfluenceLatLng] = useState(null)
-  const [showInfluenceSphere, setShowInfluenceSphere] = useState(true)
   const [cameraMode, setCameraMode] = useState('free')
+  const [projectInfoOpen, setProjectInfoOpen] = useState(false)
   const [visibleAudioRows, setVisibleAudioRows] = useState([])
+  const audioRowsHideTimerRef = useRef(null)
 
   useEffect(() => {
     let cancelled = false
@@ -206,16 +172,6 @@ export default function ArchivePage() {
 
         setTerrainBootStatus((status) => ({
           ...status,
-          message: 'Loading terrain textures',
-        }))
-        await Promise.all([
-          preloadImage(publicAssetUrl('terrain_data/satellite_texture/texture.png')),
-          preloadImage(publicAssetUrl('terrain_data/option3_texture/texture.png')),
-        ])
-        if (cancelled) return
-
-        setTerrainBootStatus((status) => ({
-          ...status,
           message: 'Loading 3D terrain engine',
         }))
         await loadTerrainModule()
@@ -243,16 +199,11 @@ export default function ArchivePage() {
   }, [])
 
   const loadArchive = useCallback(async () => {
-    setArchiveLoading(true)
-    setArchiveError(null)
     try {
       setPoints(await getPointMediaArchive())
     } catch (error) {
       console.error(error)
-      setArchiveError(error.message || 'Archive manifest is unavailable.')
       setPoints([])
-    } finally {
-      setArchiveLoading(false)
     }
   }, [])
 
@@ -267,9 +218,8 @@ export default function ArchivePage() {
       lng: Number(point.lng),
     }))
 
-    if (showAllPoints) return normalized
-    return normalized.filter((point) => hasSelectedMedia(point, selectedSlot))
-  }, [points, selectedSlot, showAllPoints])
+    return normalized.filter((point) => hasSelectedMedia(point, SELECTED_SLOT))
+  }, [points])
 
   const selectedPoint = useMemo(
     () => points.find((point) => point.id === selectedId) ?? null,
@@ -284,7 +234,7 @@ export default function ArchivePage() {
   const pointAudioSources = useMemo(() => (
     visiblePoints
       .map((point) => {
-        const timeslot = slotMedia(point, selectedSlot)
+        const timeslot = slotMedia(point, SELECTED_SLOT)
         if (!timeslot?.audio) return null
         return {
           id: point.id,
@@ -297,7 +247,7 @@ export default function ArchivePage() {
         }
       })
       .filter(Boolean)
-  ), [selectedSlot, visiblePoints])
+  ), [visiblePoints])
 
   const {
     moveTo: moveSpatialAudioTo,
@@ -310,10 +260,6 @@ export default function ArchivePage() {
     radiusMeters: DEMO_AUDIO_RADIUS_METERS,
     maxVolume: 0.38,
   })
-
-  useEffect(() => {
-    if (mapMode !== '3d') fadeOutSpatialAudio()
-  }, [fadeOutSpatialAudio, mapMode])
 
   const clearSelectedPoint = useCallback(() => {
     setSelectedId(null)
@@ -334,19 +280,18 @@ export default function ArchivePage() {
 
   useEffect(() => {
     if (!selectedId) return
-    if (!showAllPoints && !visiblePoints.some((point) => point.id === selectedId)) {
+    if (!visiblePoints.some((point) => point.id === selectedId)) {
       clearSelectedPoint()
     }
-  }, [clearSelectedPoint, selectedId, showAllPoints, visiblePoints])
+  }, [clearSelectedPoint, selectedId, visiblePoints])
 
   useEffect(() => {
-    if (selectedPoint && mapMode === '3d') {
+    if (selectedPoint) {
       setFocusLatLng([Number(selectedPoint.lat), Number(selectedPoint.lng)])
     }
-  }, [mapMode, selectedPoint])
+  }, [selectedPoint])
 
   const handleMeshPointerMove = useCallback((lat, lng) => {
-    if (mapMode !== '3d') return
     if (!isInsidePolygon(lat, lng, parkCropPolygon)) {
       setInfluenceLatLng(null)
       if (!selectedId) fadeOutSpatialAudio()
@@ -356,7 +301,7 @@ export default function ArchivePage() {
     setInfluenceLatLng([lat, lng])
     if (selectedId) return
     moveSpatialAudioTo(lat, lng)
-  }, [fadeOutSpatialAudio, mapMode, moveSpatialAudioTo, parkCropPolygon, selectedId])
+  }, [fadeOutSpatialAudio, moveSpatialAudioTo, parkCropPolygon, selectedId])
 
   const handleMeshPointerLeave = useCallback(() => {
     setInfluenceLatLng(null)
@@ -373,12 +318,27 @@ export default function ArchivePage() {
           levelPercent: Math.round(level * 100),
         }
       })
-      .filter((source) => source.level > 0.015)
+      .filter((source) => source.level > ACTIVE_AUDIO_VISIBLE_LEVEL)
       .sort((a, b) => b.level - a.level)
       .slice(0, 4)
   ), [pointAudioSources, spatialAudioLevels])
 
   useEffect(() => {
+    window.clearTimeout(audioRowsHideTimerRef.current)
+
+    if (!activeAudioRows.length) {
+      setVisibleAudioRows((previousRows) => {
+        if (!previousRows.length) return previousRows
+        return previousRows.map((row) => ({ ...row, exiting: true }))
+      })
+
+      audioRowsHideTimerRef.current = window.setTimeout(() => {
+        setVisibleAudioRows([])
+      }, ACTIVE_AUDIO_HIDE_DELAY_MS)
+
+      return () => window.clearTimeout(audioRowsHideTimerRef.current)
+    }
+
     setVisibleAudioRows((previousRows) => {
       const activeIds = new Set(activeAudioRows.map((row) => row.id))
       const previousById = new Map(previousRows.map((row) => [row.id, row]))
@@ -399,7 +359,10 @@ export default function ArchivePage() {
       setVisibleAudioRows((previousRows) => previousRows.filter((row) => !row.exiting))
     }, 360)
 
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      window.clearTimeout(audioRowsHideTimerRef.current)
+    }
   }, [activeAudioRows])
 
   const strongestAudioId = useMemo(() => {
@@ -416,7 +379,7 @@ export default function ArchivePage() {
 
   const rawMarkers = useMemo(() => (
     visiblePoints.map((point) => {
-      const timeslot = slotMedia(point, selectedSlot)
+      const timeslot = slotMedia(point, SELECTED_SLOT)
       const hasAudio = Boolean(timeslot?.audio)
       const hasVideo = Boolean(timeslot?.video_hq)
       const hasMedia = hasAudio || hasVideo
@@ -432,21 +395,16 @@ export default function ArchivePage() {
             ? (hasVideo ? '#43f2dc' : '#7dd3fc')
             : '#52636b',
         selected,
-        hasAudio: hasAudio || (showAllPoints && hasMedia),
+        hasAudio,
         nearestAudio: point.id === strongestAudioId,
         audioLevel: spatialAudioLevels[point.id] || 0,
       }
     })
-  ), [selectedId, selectedSlot, showAllPoints, spatialAudioLevels, strongestAudioId, visiblePoints])
-
-  const totalMediaPoints = useMemo(
-    () => points.filter((point) => hasSelectedMedia(point, selectedSlot)).length,
-    [points, selectedSlot],
-  )
+  ), [selectedId, spatialAudioLevels, strongestAudioId, visiblePoints])
 
   const appStyle = useMemo(
-    () => ({ '--accent': activeTime.accent, '--route': activeTime.route, '--haze': activeTime.haze }),
-    [activeTime],
+    () => ({ '--accent': timeStates.day.accent, '--route': timeStates.day.route, '--haze': timeStates.day.haze }),
+    [],
   )
 
   const panelOpen = Boolean(selectedId && selectedPoint)
@@ -461,188 +419,146 @@ export default function ArchivePage() {
   }
 
   return (
-    <div className={`app-shell time-${activeTimeId}`} style={appStyle}>
+    <div className="app-shell time-day" style={appStyle}>
       <div className="layout">
-        <aside className="sidebar-panel">
-          <div className="sidebar-content">
-            <div className="sidebar-scroll custom-scrollbar">
-              <header className="sidebar-header">
-                <p className="sidebar-kicker"><Waves size={14} /> Ranibari Live</p>
-                <h1>Video Archive</h1>
-                <p>Field video and derived audio served from UploadThing.</p>
-              </header>
+        <main className="main-stage">
+          <div className="camera-toolbar" aria-label="Camera controls">
+            <button
+              type="button"
+              className={`camera-tool ${cameraMode === 'top' ? 'active' : ''}`}
+              onClick={() => setCameraMode('top')}
+              title="Top-down view"
+              aria-label="Top-down view"
+            >
+              <Compass size={16} />
+            </button>
+            <button
+              type="button"
+              className={`camera-tool ${cameraMode === 'orbit' ? 'active' : ''}`}
+              onClick={() => setCameraMode(cameraMode === 'orbit' ? 'free' : 'orbit')}
+              title="Orbit park"
+              aria-label="Orbit park"
+            >
+              <RotateCw size={16} />
+            </button>
+            <button
+              type="button"
+              className={`camera-tool ${cameraMode === 'route' ? 'active' : ''}`}
+              onClick={() => setCameraMode(cameraMode === 'route' ? 'free' : 'route')}
+              title="Follow route"
+              aria-label="Follow route"
+            >
+              <Route size={16} />
+            </button>
+            <button
+              type="button"
+              className={`camera-tool ${projectInfoOpen ? 'active' : ''}`}
+              onClick={() => setProjectInfoOpen(true)}
+              title="Project info"
+              aria-label="Project info"
+            >
+              <Info size={16} />
+            </button>
+          </div>
 
-              <ArchiveControls
-                selectedSlot={selectedSlot}
-                onSlotChange={setSelectedSlot}
-                mapMode={mapMode}
-                onMapModeChange={setMapMode}
-                terrainRender={terrainRender}
-                onTerrainRenderChange={setTerrainRender}
-                showAllPoints={showAllPoints}
-                onShowAllPointsChange={setShowAllPoints}
-                showInfluenceSphere={showInfluenceSphere}
-                onShowInfluenceSphereChange={setShowInfluenceSphere}
-              />
-
-              <section className="control-block">
-                <div className="section-title"><RefreshCw size={15} /> Static Archive</div>
-                <div className="archive-stat">
-                  <span>{archiveLoading ? 'Loading' : `${visiblePoints.length}/${points.length} shown`}</span>
+          {projectInfoOpen && (
+            <div className="project-info-popover" role="dialog" aria-modal="true" aria-labelledby="project-info-title">
+              <div className="project-info-panel">
+                <div className="project-info-head">
+                  <p className="drawer-kicker"><Info size={14} /> Project Info</p>
                   <button
                     type="button"
-                    onClick={loadArchive}
-                    disabled={archiveLoading}
                     className="icon-button"
-                    title="Refresh archive"
-                    aria-label="Refresh archive"
+                    onClick={() => setProjectInfoOpen(false)}
+                    aria-label="Close project info"
                   >
-                    <RefreshCw size={14} className={archiveLoading ? 'spin' : ''} />
+                    <X size={16} />
                   </button>
                 </div>
-                <p className="note">
-                  {archiveError
-                    ? archiveError
-                    : `${totalMediaPoints} points have 720p video or derived audio for ${selectedSlot}.`}
+                <h2 id="project-info-title">Ranibari Live</h2>
+                <p>
+                  A static 3D archive of Ranibari field video and derived spatial audio.
+                  The day archive is placed on a contoured terrain model, with nearby audio
+                  mixed as the pointer moves across the park.
                 </p>
-              </section>
-
-              {mapMode === '3d' && (
-                <ActiveAudioList rows={visibleAudioRows} points={points} selectedSlot={selectedSlot} />
-              )}
-            </div>
-            <div className="sidebar-footer">
-              <p className="note">Raw iPhone video and point images are intentionally excluded from this web build.</p>
-            </div>
-          </div>
-        </aside>
-
-        <main className="main-stage">
-          {mapMode === '3d' && (
-            <div className="camera-toolbar" aria-label="Camera controls">
-              <button
-                type="button"
-                className={`camera-tool ${cameraMode === 'top' ? 'active' : ''}`}
-                onClick={() => setCameraMode('top')}
-                title="Top-down view"
-                aria-label="Top-down view"
-              >
-                <Compass size={16} />
-              </button>
-              <button
-                type="button"
-                className={`camera-tool ${cameraMode === 'orbit' ? 'active' : ''}`}
-                onClick={() => setCameraMode(cameraMode === 'orbit' ? 'free' : 'orbit')}
-                title="Orbit park"
-                aria-label="Orbit park"
-              >
-                <RotateCw size={16} />
-              </button>
-              <button
-                type="button"
-                className={`camera-tool ${cameraMode === 'route' ? 'active' : ''}`}
-                onClick={() => setCameraMode(cameraMode === 'route' ? 'free' : 'route')}
-                title="Follow route"
-                aria-label="Follow route"
-              >
-                <Route size={16} />
-              </button>
-            </div>
-          )}
-
-          {mapMode === '2d' ? (
-            <LeafletMap key="archive-2d" center={[27.7305, 85.321]} zoom={18} className="stage-fill" zoomControl={false}>
-              <TileLayer
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                maxZoom={19}
-                attribution="Tiles &copy; Esri"
-              />
-              <MapClickHandler onMapClick={clearSelectedPoint} />
-              {visiblePoints.map((point) => {
-                const selected = point.id === selectedId
-                const hasMedia = hasSelectedMedia(point, selectedSlot)
-                return (
-                  <CircleMarker
-                    key={point.id}
-                    center={[point.lat, point.lng]}
-                    radius={selected ? 10 : 6}
-                    pathOptions={{
-                      color: selected ? ACTIVE_SOUND_GOLD : 'transparent',
-                      weight: 3,
-                      fillColor: selected
-                        ? ACTIVE_SOUND_GOLD
-                        : hasMedia
-                          ? (CLUSTER_COLORS[point.cluster] || '#43f2dc')
-                          : '#52636b',
-                      fillOpacity: hasMedia ? (selected ? 1 : 0.68) : 0.28,
-                    }}
-                    eventHandlers={{
-                      click: (event) => {
-                        L.DomEvent.stopPropagation(event)
-                        selectPoint(point.id)
-                      },
-                    }}
-                  />
-                )
-              })}
-            </LeafletMap>
-          ) : (
-            <Suspense fallback={(
-              <div className="loading-state">
-                <div className="loading-card"><Loader2 size={32} className="spin" /></div>
+                <dl className="project-info-specs">
+                  <div>
+                    <dt>Host</dt>
+                    <dd>GitHub Pages</dd>
+                  </div>
+                  <div>
+                    <dt>Media</dt>
+                    <dd>UploadThing public URLs</dd>
+                  </div>
+                  <div>
+                    <dt>Mode</dt>
+                    <dd>3D contour terrain</dd>
+                  </div>
+                  <div>
+                    <dt>Slot</dt>
+                    <dd>Day</dd>
+                  </div>
+                </dl>
               </div>
-            )}>
-              <TerrainTextureMap
-                tiles={tiles}
-                textureMeta={null}
-                textureOpacity={1}
-                textureType="satellite"
-                displayMode="grid"
-                exaggeration={DEMO_CONFIG.exaggeration}
-                enableNoise={DEMO_CONFIG.enableNoise}
-                noiseAmplitude={DEMO_CONFIG.noiseAmplitude}
-                noiseFrequency={DEMO_CONFIG.noiseFrequency}
-                enableSmoothing={DEMO_CONFIG.enableSmoothing}
-                blurRadius={DEMO_CONFIG.blurRadius}
-                enableRouteSmooth={DEMO_CONFIG.enableRouteSmooth}
-                roadHalfWidth={DEMO_CONFIG.roadHalfWidth}
-                enableBoundarySmooth={DEMO_CONFIG.enableBoundarySmooth}
-                boundaryHalfWidth={DEMO_CONFIG.boundaryHalfWidth}
-                parkBoundary={parkCropPolygon}
-                cameraPosition={DEMO_CONFIG.cameraPosition}
-                cameraTarget={DEMO_CONFIG.cameraTarget}
-                cameraMode={cameraMode}
-                terrainTheme={terrainRender === 'contours' ? 'cinematic' : undefined}
-                showContours={terrainRender === 'contours'}
-                rawMarkers={rawMarkers}
-                focusLatLng={focusLatLng}
-                influenceLatLng={showInfluenceSphere ? influenceLatLng : null}
-                influenceRadiusMeters={DEMO_AUDIO_RADIUS_METERS}
-                onMeshClick={(lat, lng) => {
-                  if (!visiblePoints.length) return
-                  if (!isInsidePolygon(lat, lng, parkCropPolygon)) {
-                    clearSelectedPoint()
-                    return
-                  }
-
-                  let nearest = visiblePoints[0]
-                  let minDistance = (nearest.lat - lat) ** 2 + (nearest.lng - lng) ** 2
-                  visiblePoints.forEach((point) => {
-                    const distance = (point.lat - lat) ** 2 + (point.lng - lng) ** 2
-                    if (distance < minDistance) {
-                      minDistance = distance
-                      nearest = point
-                    }
-                  })
-                  if (minDistance < 0.0000005) selectPoint(nearest.id)
-                  else clearSelectedPoint()
-                }}
-                onMeshPointerMove={handleMeshPointerMove}
-                onMeshPointerLeave={handleMeshPointerLeave}
-                onMeshPointerDown={unlockSpatialAudio}
-              />
-            </Suspense>
+            </div>
           )}
+
+          <div className="active-audio-float">
+            <ActiveAudioList rows={visibleAudioRows} points={points} selectedSlot={SELECTED_SLOT} />
+          </div>
+
+          <Suspense fallback={(
+            <div className="loading-state">
+              <div className="loading-card"><Loader2 size={32} className="spin" /></div>
+            </div>
+          )}>
+            <TerrainTextureMap
+              tiles={tiles}
+              exaggeration={DEMO_CONFIG.exaggeration}
+              enableNoise={DEMO_CONFIG.enableNoise}
+              noiseAmplitude={DEMO_CONFIG.noiseAmplitude}
+              noiseFrequency={DEMO_CONFIG.noiseFrequency}
+              enableSmoothing={DEMO_CONFIG.enableSmoothing}
+              blurRadius={DEMO_CONFIG.blurRadius}
+              enableRouteSmooth={DEMO_CONFIG.enableRouteSmooth}
+              roadHalfWidth={DEMO_CONFIG.roadHalfWidth}
+              enableBoundarySmooth={DEMO_CONFIG.enableBoundarySmooth}
+              boundaryHalfWidth={DEMO_CONFIG.boundaryHalfWidth}
+              parkBoundary={parkCropPolygon}
+              cameraPosition={DEMO_CONFIG.cameraPosition}
+              cameraTarget={DEMO_CONFIG.cameraTarget}
+              cameraMode={cameraMode}
+              onUserControlStart={() => setCameraMode('free')}
+              terrainTheme="cinematic"
+              showContours
+              rawMarkers={rawMarkers}
+              focusLatLng={focusLatLng}
+              influenceLatLng={influenceLatLng}
+              influenceRadiusMeters={DEMO_AUDIO_RADIUS_METERS}
+              onMeshClick={(lat, lng) => {
+                if (!visiblePoints.length) return
+                if (!isInsidePolygon(lat, lng, parkCropPolygon)) {
+                  clearSelectedPoint()
+                  return
+                }
+
+                let nearest = visiblePoints[0]
+                let minDistance = (nearest.lat - lat) ** 2 + (nearest.lng - lng) ** 2
+                visiblePoints.forEach((point) => {
+                  const distance = (point.lat - lat) ** 2 + (point.lng - lng) ** 2
+                  if (distance < minDistance) {
+                    minDistance = distance
+                    nearest = point
+                  }
+                })
+                if (minDistance < 0.0000005) selectPoint(nearest.id)
+                else clearSelectedPoint()
+              }}
+              onMeshPointerMove={handleMeshPointerMove}
+              onMeshPointerLeave={handleMeshPointerLeave}
+              onMeshPointerDown={unlockSpatialAudio}
+            />
+          </Suspense>
         </main>
       </div>
 
@@ -650,7 +566,7 @@ export default function ArchivePage() {
         open={panelOpen}
         point={selectedPoint}
         pointIndex={selectedPointIndex}
-        selectedSlot={selectedSlot}
+        selectedSlot={SELECTED_SLOT}
         onClose={clearSelectedPoint}
       />
     </div>

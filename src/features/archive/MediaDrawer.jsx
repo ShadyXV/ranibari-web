@@ -1,10 +1,14 @@
-import { FileAudio, FileVideo, Info, MapPin, X } from 'lucide-react'
-import WaveformPlayer from '../../components/WaveformPlayer.jsx'
+import { Info, Loader2, MapPin, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 export default function MediaDrawer({ open, point, pointIndex, selectedSlot, onClose }) {
   const timeslot = point?.slots?.[selectedSlot] ?? null
   const videoUrl = timeslot?.video_hq ?? null
-  const audioUrl = timeslot?.audio ?? null
+  const [videoReady, setVideoReady] = useState(false)
+
+  useEffect(() => {
+    setVideoReady(false)
+  }, [videoUrl])
 
   return (
     <aside className={`drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
@@ -13,9 +17,9 @@ export default function MediaDrawer({ open, point, pointIndex, selectedSlot, onC
           <div className="loading-state">Loading selected point</div>
         ) : (
           <>
-            <header className="sidebar-header">
+            <header className="drawer-header">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <p className="sidebar-kicker"><MapPin size={14} /> Location Node</p>
+                <p className="drawer-kicker"><MapPin size={14} /> Location Node</p>
                 <button type="button" className="icon-button" onClick={onClose} aria-label="Close media drawer">
                   <X size={16} />
                 </button>
@@ -26,23 +30,30 @@ export default function MediaDrawer({ open, point, pointIndex, selectedSlot, onC
 
             <div className="drawer-body custom-scrollbar">
               <section className="drawer-section">
-                <div className="section-title"><FileVideo size={14} /> 720p Video</div>
                 <div className="video-frame">
                   {videoUrl ? (
-                    <video key={`${timeslot.id}-${videoUrl}`} src={videoUrl} controls autoPlay playsInline />
+                    <>
+                      {!videoReady && (
+                        <div className="video-loading">
+                          <Loader2 size={24} className="spin" />
+                        </div>
+                      )}
+                      <video
+                        key={`${timeslot.id}-${videoUrl}`}
+                        className={videoReady ? 'ready' : ''}
+                        src={videoUrl}
+                        controls={videoReady}
+                        autoPlay
+                        playsInline
+                        preload="auto"
+                        onLoadedData={() => setVideoReady(true)}
+                        onCanPlay={() => setVideoReady(true)}
+                      />
+                    </>
                   ) : (
                     <div className="empty-media">No video for {selectedSlot}</div>
                   )}
                 </div>
-              </section>
-
-              <section className="drawer-section">
-                <div className="section-title"><FileAudio size={14} /> Derived Audio</div>
-                {audioUrl ? (
-                  <WaveformPlayer src={audioUrl} filename={timeslot.audioPath || 'audio.aac'} />
-                ) : (
-                  <div className="empty-media" style={{ minHeight: 96 }}>No audio for {selectedSlot}</div>
-                )}
               </section>
 
               {point.notes && (
@@ -51,20 +62,6 @@ export default function MediaDrawer({ open, point, pointIndex, selectedSlot, onC
                   <p className="note">{point.notes}</p>
                 </section>
               )}
-
-              <section className="drawer-section">
-                <div className="section-title"><Info size={14} /> Node Specification</div>
-                <div className="spec-grid">
-                  <div className="spec-cell">
-                    <span>Classification</span>
-                    <span>{point.cluster || 'general'}</span>
-                  </div>
-                  <div className="spec-cell">
-                    <span>Priority</span>
-                    <span>Level {point.priority || '3'}</span>
-                  </div>
-                </div>
-              </section>
             </div>
           </>
         )}

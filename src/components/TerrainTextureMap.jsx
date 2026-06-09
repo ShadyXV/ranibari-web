@@ -1,10 +1,9 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Sky, Stars, Line, useTexture, Billboard } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Stars, Line, useTexture, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { Player } from './Player.jsx';
 import { routes } from '../data/OverlayData.js';
-import { publicAssetUrl } from '../lib/publicAssetUrl.js';
 
 const WORLD_SCALE = 1.0;
 const DENSE_RES = 160;
@@ -13,6 +12,12 @@ const CONTOUR_SAMPLE_STEP = 2;
 const METERS_PER_DEGREE_LAT = 111_320;
 const ACTIVE_SOUND_GOLD = '#e7c66a';
 const ACTIVE_SOUND_GOLD_HIGHLIGHT = '#fff0bd';
+const SCENE_BACKGROUND = '#000309';
+const SCENE_FOG = '#00060e';
+const CINEMATIC_TERRAIN = '#01060d';
+const CINEMATIC_TERRAIN_EMISSIVE = '#06182a';
+const MIN_MAP_TILT = 0.05;
+const MAX_MAP_TILT = Math.PI * 0.46;
 
 function easeOutQuart(t) {
   return 1 - Math.pow(1 - t, 4);
@@ -144,7 +149,7 @@ function buildContourSegments(displacedH, segmentsX, segmentsY, worldW, worldH, 
   return segments;
 }
 
-// Smoothly moves OrbitControls target to a new focus point
+// Smoothly moves the camera controls target to a new focus point
 function CameraFocuser({ focusTarget, controlsRef }) {
   const targetVec = useRef(new THREE.Vector3());
   const active = useRef(false);
@@ -422,10 +427,6 @@ function CameraDirector({ mode, data, controlsRef }) {
 
 function TerrainTextureMesh({
   geometry,
-  textureMeta,
-  textureOpacity,
-  textureType,
-  displayMode,
   terrainTheme,
   showContours,
   contourSegments,
@@ -438,13 +439,6 @@ function TerrainTextureMesh({
   onMeshPointerDown,
 }) {
   const meshRef = useRef();
-
-  // Load both textures unconditionally (hooks can't be conditional)
-  const satTexture = useTexture(publicAssetUrl('terrain_data/satellite_texture/texture.png'));
-  const topoTexture = useTexture(publicAssetUrl('terrain_data/option3_texture/texture.png'));
-  const texture = textureType === 'satellite' ? satTexture : topoTexture;
-  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
 
   if (!geometry) return null;
 
@@ -485,9 +479,6 @@ function TerrainTextureMesh({
     onPointerDown: handlePointerDown,
   };
 
-  const showTexture = displayMode === 'satellite' && textureMeta;
-  const showGradient = displayMode === 'gradient';
-  const showGrid = displayMode === 'grid';
   const isCinematic = terrainTheme === 'cinematic';
 
   return (
@@ -496,43 +487,20 @@ function TerrainTextureMesh({
       {isCinematic && (
         <mesh ref={meshRef} geometry={geometry} {...terrainEvents}>
           <meshStandardMaterial
-            color="#071116"
-            emissive="#031f22"
-            emissiveIntensity={0.18}
+            color={CINEMATIC_TERRAIN}
+            emissive={CINEMATIC_TERRAIN_EMISSIVE}
+            emissiveIntensity={0.16}
             side={THREE.DoubleSide}
             roughness={0.96}
             metalness={0.02}
           />
         </mesh>
       )}
-      {!isCinematic && showTexture && (
-        <mesh ref={meshRef} geometry={geometry} {...terrainEvents}>
-          <meshStandardMaterial
-            map={texture}
-            side={THREE.DoubleSide}
-            roughness={0.9}
-            metalness={0.0}
-            transparent
-            opacity={textureOpacity}
-          />
-        </mesh>
-      )}
-      {!isCinematic && showGradient && (
+      {!isCinematic && (
         <mesh ref={meshRef} geometry={geometry} {...terrainEvents}>
           <meshStandardMaterial vertexColors side={THREE.DoubleSide} roughness={0.85} metalness={0.05} />
         </mesh>
       )}
-      {!isCinematic && showGrid && (
-        <group>
-          <mesh geometry={geometry} {...terrainEvents}>
-            <meshStandardMaterial color="#0f172a" side={THREE.DoubleSide} roughness={0.9} />
-          </mesh>
-          <mesh geometry={geometry}>
-            <meshBasicMaterial color="#22d3ee" wireframe transparent opacity={0.4} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-          </mesh>
-        </group>
-      )}
-
       {/* Boundary & routes */}
       {isCinematic && showContours && <ContourSegments segments={contourSegments} />}
       {isCinematic ? (
@@ -928,7 +896,7 @@ function InfluenceSphere({ sphere }) {
   );
 }
 
-export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, textureType, displayMode, terrainTheme, showContours = false, exaggeration, parkBoundary, playMode, enableNoise, noiseAmplitude, noiseFrequency, enableSmoothing, blurRadius, enableRouteSmooth, roadHalfWidth, enableBoundarySmooth, boundaryHalfWidth, cameraPosition, cameraTarget, cameraMode = 'free', onCameraChange, markers, rawMarkers, onMeshClick, onMeshPointerMove, onMeshPointerLeave, onMeshPointerDown, focusLatLng, flyToMarker, onFlyToMarkerComplete, influenceLatLng, influenceRadiusMeters = 85 }) {
+export default function TerrainTextureMap({ tiles, terrainTheme, showContours = false, exaggeration, parkBoundary, playMode, enableNoise, noiseAmplitude, noiseFrequency, enableSmoothing, blurRadius, enableRouteSmooth, roadHalfWidth, enableBoundarySmooth, boundaryHalfWidth, cameraPosition, cameraTarget, cameraMode = 'free', onCameraChange, onUserControlStart, markers, rawMarkers, onMeshClick, onMeshPointerMove, onMeshPointerLeave, onMeshPointerDown, focusLatLng, flyToMarker, onFlyToMarkerComplete, influenceLatLng, influenceRadiusMeters = 85 }) {
   const controlsRef = useRef();
   const isCinematic = terrainTheme === 'cinematic';
 
@@ -1163,7 +1131,6 @@ export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, 
     const geo = new THREE.PlaneGeometry(worldW, worldH, segmentsX, segmentsY);
     geo.rotateX(-Math.PI / 2);
     const vertices = geo.attributes.position.array;
-    const uvs = geo.attributes.uv.array;
     
     // Fallback vertex colors if texture fails
     const colors = new Float32Array(vertices.length);
@@ -1176,41 +1143,17 @@ export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, 
         const h = displacedH[vIdx];
         vertices[idx + 1] = h;
 
-        // Calculate UVs based on textureMeta bounds
-        if (textureMeta) {
-          // Calculate geographic lng/lat of this vertex
-          const x_px = startX + (j / segmentsX) * (gridWidth - 1);
-          const y_px = startY + (i / segmentsY) * (gridHeight - 1);
-          
-          const lng = refLng + x_px * local_delta_lng;
-          const lat = refLat + y_px * local_delta_lat;
-          
-          const tBounds = textureMeta.bounds;
-          const u = (lng - tBounds.west) / (tBounds.east - tBounds.west);
-          // Three.js loads textures with flipY=true (default): UV v=1 → top of PNG (north edge),
-          // v=0 → bottom of PNG (south edge). So north vertex must get v=1.
-          const v = (lat - tBounds.south) / (tBounds.north - tBounds.south);
-          
-          uvs[vIdx * 2] = u;
-          uvs[vIdx * 2 + 1] = v;
-        } else {
-          // Fallback color mapping
-          const normalizedH = dispRange > 0 ? (h - minDisp) / dispRange : 0;
-          if (normalizedH < 0.25) color.set('#10b981');
-          else if (normalizedH < 0.5) color.set('#fbbf24');
-          else if (normalizedH < 0.75) color.set('#f97316');
-          else color.set('#ef4444');
-          colors[idx] = color.r; colors[idx + 1] = color.g; colors[idx + 2] = color.b;
-        }
+        const normalizedH = dispRange > 0 ? (h - minDisp) / dispRange : 0;
+        if (normalizedH < 0.25) color.set('#10b981');
+        else if (normalizedH < 0.5) color.set('#fbbf24');
+        else if (normalizedH < 0.75) color.set('#f97316');
+        else color.set('#ef4444');
+        colors[idx] = color.r; colors[idx + 1] = color.g; colors[idx + 2] = color.b;
       }
     }
     
     geo.attributes.position.needsUpdate = true;
-    if (textureMeta) {
-      geo.attributes.uv.needsUpdate = true;
-    } else {
-      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
 
     const getSmoothElevation = (worldX, worldZ) => {
@@ -1296,7 +1239,7 @@ export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, 
     };
 
     return { geometry: geo, contourSegments, projectedBoundary, roadPaths, getElevationAt: getSmoothElevation, project, unproject, worldW, worldH };
-  }, [tiles, textureMeta, parkBoundary, exaggeration, enableNoise, noiseAmplitude, noiseFrequency, enableSmoothing, blurRadius, enableRouteSmooth, roadHalfWidth, enableBoundarySmooth, boundaryHalfWidth]);
+  }, [tiles, parkBoundary, exaggeration, enableNoise, noiseAmplitude, noiseFrequency, enableSmoothing, blurRadius, enableRouteSmooth, roadHalfWidth, enableBoundarySmooth, boundaryHalfWidth]);
 
   const targetVector = useMemo(() => new THREE.Vector3(...cameraTarget), [cameraTarget[0], cameraTarget[1], cameraTarget[2]]);
 
@@ -1342,16 +1285,37 @@ export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, 
       <Canvas
         shadows={{ type: THREE.PCFShadowMap }}
         onCreated={({ gl }) => {
-          gl.setClearColor('#000000', 1);
+          gl.setClearColor(SCENE_BACKGROUND, 1);
         }}
       >
+        <color attach="background" args={[SCENE_BACKGROUND]} />
+        <fogExp2 attach="fog" args={[SCENE_FOG, isCinematic ? 0.0005 : 0.00032]} />
         <PerspectiveCamera makeDefault position={cameraPosition} fov={35} />
-        <OrbitControls 
+        <OrbitControls
           ref={controlsRef} 
           makeDefault 
-          minDistance={10} 
-          maxDistance={3000} 
+          enableDamping
+          dampingFactor={0.08}
+          screenSpacePanning={false}
+          minDistance={18}
+          maxDistance={3000}
+          minPolarAngle={MIN_MAP_TILT}
+          maxPolarAngle={MAX_MAP_TILT}
+          panSpeed={1.15}
+          rotateSpeed={0.72}
+          zoomSpeed={0.82}
+          keyPanSpeed={18}
+          mouseButtons={{
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN,
+          }}
+          touches={{
+            ONE: THREE.TOUCH.PAN,
+            TWO: THREE.TOUCH.DOLLY_ROTATE,
+          }}
           target={targetVector}
+          onStart={onUserControlStart}
           onChange={() => {
             if (controlsRef.current && onCameraChange) {
               const pos = controlsRef.current.object.position.toArray();
@@ -1361,11 +1325,10 @@ export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, 
           }}
         />
         
-        <ambientLight intensity={isCinematic ? 0.52 : displayMode === 'satellite' ? 2.5 : 0.3} />
-        <spotLight position={[500, 1000, 500]} angle={0.15} penumbra={1} intensity={isCinematic ? 1.4 : displayMode === 'satellite' ? 0.8 : 4} castShadow />
-        <directionalLight position={[-500, 500, 0]} intensity={isCinematic ? 0.75 : displayMode === 'satellite' ? 0.6 : 1.5} />
+        <ambientLight intensity={isCinematic ? 0.52 : 0.3} />
+        <spotLight position={[500, 1000, 500]} angle={0.15} penumbra={1} intensity={isCinematic ? 1.4 : 4} castShadow />
+        <directionalLight position={[-500, 500, 0]} intensity={isCinematic ? 0.75 : 1.5} />
         
-        {!isCinematic && <Sky sunPosition={[100, 10, 100]} turbidity={0.1} rayleigh={0.5} />}
         {!isCinematic && <Stars radius={500} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />}
         
         <CameraFocuser focusTarget={cameraMode === 'free' ? focus3D : null} controlsRef={controlsRef} />
@@ -1381,10 +1344,6 @@ export default function TerrainTextureMap({ tiles, textureMeta, textureOpacity, 
               />
               <TerrainTextureMesh
                 geometry={data.geometry}
-                textureMeta={textureMeta}
-                textureOpacity={textureOpacity}
-                textureType={textureType}
-                displayMode={displayMode ?? (textureMeta ? 'satellite' : 'gradient')}
                 terrainTheme={terrainTheme}
                 showContours={showContours}
                 contourSegments={data.contourSegments}
