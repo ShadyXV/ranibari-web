@@ -43,7 +43,11 @@ npm run media:upload -- --confirm
 
 ## GitHub Pages
 
-The included workflow builds with Vite and publishes `dist/` to GitHub Pages. No UploadThing secret is needed in GitHub Actions because `public/data/archive-manifest.json` stores the public file URLs after upload.
+The included workflow builds with Vite and publishes `dist/` to GitHub Pages only when run manually from the GitHub Actions tab. It does not deploy automatically on pushes to `main`.
+
+In the repository settings, set Pages to deploy from GitHub Actions. Then run the `Deploy GitHub Pages` workflow manually when you want to publish the current branch.
+
+No UploadThing secret is needed in GitHub Actions because `public/data/archive-manifest.json` stores the public file URLs after upload.
 
 For a custom domain, set `VITE_BASE_PATH=/` in the workflow or repository variables.
 

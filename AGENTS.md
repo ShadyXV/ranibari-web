@@ -17,6 +17,7 @@ npm run media:upload -- --confirm
 ## Architecture
 
 - GitHub Pages hosts the built frontend from `dist/`.
+- GitHub Pages deployment is manual-only via `.github/workflows/deploy-pages.yml` and `workflow_dispatch`; do not add push-based deployment unless explicitly requested.
 - Structured data lives in `public/data/archive-manifest.json`.
 - UploadThing stores media files.
 - `public/data/archive-manifest.json` stores returned public UploadThing URLs after upload.
