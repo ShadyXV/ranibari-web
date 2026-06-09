@@ -482,6 +482,8 @@ button:disabled {
 }
 
 .drawer-body {
+  display: grid;
+  grid-template-rows: minmax(20px, 1fr) auto minmax(20px, 1fr);
   min-height: 0;
   flex: 1;
   overflow-y: auto;
@@ -536,6 +538,17 @@ button:disabled {
   display: grid;
   gap: 12px;
   margin-top: 26px;
+}
+
+.drawer-section.media-section {
+  grid-row: 2;
+  align-self: center;
+  margin-top: 0;
+}
+
+.drawer-section.media-section + .drawer-section {
+  grid-row: 3;
+  align-self: start;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
