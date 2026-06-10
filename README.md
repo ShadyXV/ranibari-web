@@ -1,4 +1,4 @@
-# Ranibari Web
+# Ranibari Live
 
 An interactive art demo for exploring Ranibari Community Forest through sound, terrain, and video.
 
