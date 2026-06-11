@@ -100,7 +100,7 @@ function TerrainBootScreen({ status, error }) {
             </div>
             <div className="boot-steps">
               <span>{status.loadedTiles}/{status.totalTiles || 0} terrain tiles</span>
-              <span>{status.moduleReady ? '3D engine ready' : 'loading 3D engine'}</span>
+              <span>{status.moduleReady ? 'terrain ready' : 'loading terrain'}</span>
             </div>
           </>
         )}

@@ -563,7 +563,9 @@ button:disabled {
 
 .video-frame {
   position: relative;
-  aspect-ratio: 16 / 9;
+  width: min(100%, 320px);
+  aspect-ratio: 9 / 16;
+  margin-inline: auto;
   overflow: hidden;
   border-radius: 8px;
   background: rgba(0, 4, 10, 0.86);
